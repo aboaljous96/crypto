@@ -20,8 +20,7 @@ from data_loader.creator import create_dataset, preprocess
 logger = logging.getLogger(__name__)
 
 
-@hydra.main(config_path=HYDRA_PATH, config_name="train")
-def train(cfg: DictConfig):
+def run_training(cfg: DictConfig):
     if cfg.load_path is None and cfg.model is None:
         msg = 'either specify a load_path or config a model.'
         logger.error(msg)
@@ -75,6 +74,11 @@ def train(cfg: DictConfig):
 
     reporter.print_pretty_metrics(logger)
     reporter.save_metrics()
+
+
+@hydra.main(config_path=HYDRA_PATH, config_name="train")
+def train(cfg: DictConfig):
+    run_training(cfg)
 
 
 if __name__ == '__main__':

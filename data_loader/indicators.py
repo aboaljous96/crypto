@@ -40,6 +40,11 @@ def calculate_indicators(mean_, close_, open_, high_, low_, volume_):
     long_wma = wma(data=mean_, period=100)
     indicators['long_wma'] = long_wma
 
+    sma_ = sma(mean_, period=20)
+    indicators['sma'] = sma_
+    ema_ = ema(mean_, period=20)
+    indicators['ema'] = ema_
+
     ewma_ = ewma(data=mean_, period=15, alpha=0.97)
     indicators['ewma'] = ewma_
     tema_ = trix(data=mean_, period=30)
@@ -57,7 +62,8 @@ def calculate_indicators(mean_, close_, open_, high_, low_, volume_):
     indicators['rsi'] = rsi_
     srsi_ = srsi(mean_, period=14)
     indicators['srsi'] = srsi_
-    _, bolinger_up, bolinger_down, _ = bollinger_bands(mean_, period=20)
+    bollinger_mid, bolinger_up, bolinger_down, _ = bollinger_bands(mean_, period=20)
+    indicators['bollinger'] = bollinger_mid
     indicators['bolinger_up'] = bolinger_up
     indicators['bolinger_down'] = bolinger_down
     _, kc_up, kc_down, _ = keltner_channel(close_, open_, high_, low_, period=20)
@@ -82,7 +88,25 @@ def calculate_indicators(mean_, close_, open_, high_, low_, volume_):
     cog_ = cog(mean_)
     indicators['cog'] = cog_
 
+    obv_ = on_balance_volume(close_, volume_)
+    indicators['obv'] = obv_
+
     return indicators
+
+
+def on_balance_volume(close_, volume_):
+    obv = np.zeros(len(close_))
+    if len(obv) == 0:
+        return obv
+    obv[0] = volume_[0]
+    for i in range(1, len(close_)):
+        if close_[i] > close_[i - 1]:
+            obv[i] = obv[i - 1] + volume_[i]
+        elif close_[i] < close_[i - 1]:
+            obv[i] = obv[i - 1] - volume_[i]
+        else:
+            obv[i] = obv[i - 1]
+    return obv
 
 
 def add_indicators_to_dataset(indicators, indicators_names, dates, mean_):

@@ -6,4 +6,7 @@ type: lstm
 hidden_dim: 256
 epochs: 50
 is_regression: True
+num_layers: 2
+dropout: 0.0
+verbose: 0
 
