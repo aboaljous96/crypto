@@ -18,14 +18,23 @@ class MyLSTM:
     def __init__(self, args):
         self.model = Sequential()
         self.is_model_created = False
-        self.hidden_dim = args.hidden_dim
-        self.epochs = args.epochs
+        self.hidden_dim = getattr(args, 'hidden_dim', 256)
+        self.epochs = getattr(args, 'epochs', 50)
+        self.num_layers = getattr(args, 'num_layers', 2)
+        self.dropout = getattr(args, 'dropout', 0.0)
+        self.verbose = getattr(args, 'verbose', 1)
 
 
     def create_model(self, shape_):
-        self.model.add(LSTM(self.hidden_dim, return_sequences=True, input_shape=(1, shape_)))
-        # model.add(LSTM(256, return_sequences=True,input_shape=(1, look_back)))
-        self.model.add(LSTM(self.hidden_dim))
+        self.model = Sequential()
+        for layer_idx in range(self.num_layers):
+            return_sequences = layer_idx < self.num_layers - 1
+            if layer_idx == 0:
+                self.model.add(LSTM(self.hidden_dim, return_sequences=return_sequences, input_shape=(1, shape_)))
+            else:
+                self.model.add(LSTM(self.hidden_dim, return_sequences=return_sequences))
+            if self.dropout > 0 and (return_sequences or layer_idx == self.num_layers - 1):
+                self.model.add(Dropout(self.dropout))
         self.model.add(Dense(1))
         self.model.compile(loss='mean_squared_error', optimizer='adam')
 
@@ -44,7 +53,7 @@ class MyLSTM:
         train_x = np.array(train_x, dtype=float)
         train_y = np.array(train_y, dtype=float)
         train_x = np.reshape(train_x, (train_x.shape[0], 1, train_x.shape[1]))
-        self.model.fit(train_x, train_y, epochs=self.epochs, verbose=1, shuffle=False, batch_size=50)
+        self.model.fit(train_x, train_y, epochs=self.epochs, verbose=self.verbose, shuffle=False, batch_size=50)
 
     def predict(self, test_x):
         test_x = np.array(test_x.iloc[:, 1:], dtype=float)

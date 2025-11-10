@@ -64,20 +64,25 @@ def preprocess(dataset, cfg, logger=None):
     features = [f for f in features if f != 'date']
     features = features + indicators_names
     dataset, profit_calculator = create_dataset(
-        arr, list(dates), look_back=cfg.dataset_loader.window_size, features=features
+        arr,
+        list(dates),
+        look_back=cfg.dataset_loader.window_size,
+        features=features,
+        prediction_window=getattr(cfg.dataset_loader, 'prediction_window', 1)
     )
     return dataset, profit_calculator
 
 
-def create_dataset(dataset, dates, look_back, features):
+def create_dataset(dataset, dates, look_back, features, prediction_window=1):
     data_x = []
-    for i in range(len(dataset) - look_back - 1):
+    for i in range(len(dataset) - look_back - prediction_window):
         a = dataset[i:(i + look_back), :]
         a = a.reshape(-1)
         d = datetime.strptime(str(dates[i]).split('+')[0].split('.')[0], '%Y-%m-%d %H:%M:%S')
         b = [d]
         b = b + a.tolist()
-        b.append(dataset[(i + look_back), :][-1])
+        target_index = i + look_back + prediction_window - 1
+        b.append(dataset[target_index, :][-1])
         data_x.append(b)
 
     data_x = np.array(data_x)

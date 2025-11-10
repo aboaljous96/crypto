@@ -82,7 +82,13 @@ class BitmexDataset:
         dates = df['Date']
         df = df.drop('Date', axis=1)
         arr = np.array(df)
-        data, profit_calculator = create_dataset(arr, list(dates), look_back=window_size, features=self.features)
+        data, profit_calculator = create_dataset(
+            arr,
+            list(dates),
+            look_back=window_size,
+            features=self.features,
+            prediction_window=getattr(self.cfg.dataset_loader, 'prediction_window', 1)
+        )
         return data, profit_calculator
 
     def get_dataset(self):
