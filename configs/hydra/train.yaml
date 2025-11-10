@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - model: random_forest #orbit - random_forest - sarimax - lstm - gru - prophet
+  - dataset_loader: CoinMarket #Bitmex
+  - metrics
+
+validation_method: simple #simple - cross_validation
+symbol: BTC
+load_path: C:\Users\aboal\CryptoPredictions\data\BTCUSD-1d-data.csv
+save_dir:
+dataset_path:
