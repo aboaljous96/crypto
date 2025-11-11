@@ -65,7 +65,7 @@ class AutoModelOptimizer:
                 cfg.dataset_loader.name = "Bitmex"
                 cfg.dataset_loader.symbol = "XBTUSD"
                 cfg.dataset_loader.binsize = "1d"
-                cfg.dataset_loader.features = "Date, open, High, Low, close, volume"
+                cfg.dataset_loader.features = "Date, open, high, low, close, volume"
                 cfg.dataset_loader.train_start_date = "2016-01-01 00:00:00"
                 cfg.dataset_loader.train_end_date = "2099-12-31 00:00:00"
                 cfg.dataset_loader.valid_start_date = "2016-01-01 00:00:00"

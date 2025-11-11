@@ -9,7 +9,7 @@ from bitmex import bitmex
 # from binance.client import Client
 from datetime import timedelta, datetime
 from dateutil import parser
-from tqdm import tqdm_notebook #(Optional, used for progress-bars)
+from tqdm import tqdm
 from .creator import create_dataset, preprocess
 import numpy as np
 
@@ -66,7 +66,7 @@ class BitmexDataset:
         if rounds > 0:
             print('Downloading %d minutes of new data available for %s, i.e. %d instances of %s data in %d rounds.' % (
             delta_min, symbol, available_data, kline_size, rounds))
-            for round_num in tqdm_notebook(range(rounds)):
+            for round_num in tqdm(range(rounds)):
                 time.sleep(3)
                 new_time = (oldest_point + timedelta(minutes=round_num * self.batch_size * self.binsizes[kline_size]))
                 data = self.bitmex_client.Trade.Trade_getBucketed(symbol=symbol, binSize=kline_size, count=self.batch_size,

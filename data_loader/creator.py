@@ -23,24 +23,16 @@ def preprocess(dataset, cfg, logger=None):
     dates = dataset['Date']
     df = dataset[features]
 
-    # توحيد أسماء الأعمدة
-    if 'low' in df.columns:
-        df = df.rename({'low': 'Low'}, axis=1)
-    if 'high' in df.columns:
-        df = df.rename({'high': 'High'}, axis=1)
-    if 'open' in df.columns:
-        df = df.rename({'open': 'Open'}, axis=1)
-    if 'close' in df.columns:
-        df = df.rename({'close': 'Close'}, axis=1)
-    if 'volume' in df.columns:
-        df = df.rename({'volume': 'Volume'}, axis=1)
+    # [تم الحذف] إزالة قسم إعادة التسمية (Rename) لأنه لم يعد مطلوباً ويسبب أخطاء
+    # أصبحت الأعمدة الآن كلها بأحرف صغيرة (high, low, open, close, volume)
 
     # حساب المتوسط
     try:
-        df['Mean'] = (df['Low'] + df['High']) / 2
+        # [تصحيح] استخدام الأحرف الصغيرة
+        df['Mean'] = (df['low'] + df['high']) / 2
     except Exception:
         if logger is not None:
-            logger.error('Your dataset_loader should have High and Low columns')
+            logger.error('Your dataset_loader should have high and low columns')
 
     # تنظيف البيانات
     df = df.dropna()
@@ -48,13 +40,14 @@ def preprocess(dataset, cfg, logger=None):
     arr = np.array(df1)
 
     # حساب المؤشرات الفنية
+    # [تصحيح] استخدام الأحرف الصغيرة في كل الأعمدة
     indicators = calculate_indicators(
         mean_=np.array(df.Mean),
-        low_=np.array(df.Low),
-        high_=np.array(df.High),
-        open_=np.array(df.Open),
-        close_=np.array(df.Close),
-        volume_=np.array(df.Volume)
+        low_=np.array(df.low),
+        high_=np.array(df.high),
+        open_=np.array(df.open),
+        close_=np.array(df.close),
+        volume_=np.array(df.volume)
     )
 
     indicators_names = list(cfg.dataset_loader.indicators_names.split(' '))
@@ -106,27 +99,33 @@ def create_dataset(dataset, dates, look_back, features, prediction_window=1):
         name = features[i]
         last_col.append(f'{name}_day{counter_date-1}')
     last_col.append('prediction')
-    last_col.remove(f'High_day{counter_date-1}')
-    last_col.remove(f'Low_day{counter_date - 1}')
+    
+    # [صحيح] هذا الجزء سليم (يستخدم أحرف صغيرة)
+    last_col.remove(f'high_day{counter_date-1}')
+    last_col.remove(f'low_day{counter_date - 1}')
     last_col.remove(f'mean_day{counter_date - 1}')
 
+    # [صحيح] هذا الجزء سليم (يستخدم أحرف صغيرة)
     profit_calculator = data_frame.copy()[[
         'Date',
-        f'Low_day{counter_date-1}', f'High_day{counter_date-1}',
+        f'low_day{counter_date-1}', f'high_day{counter_date-1}',
         f'close_day{counter_date-1}', f'open_day{counter_date-1}',
         f'volume_day{counter_date-1}'
     ]]
 
     data_frame.drop(last_col, axis=1, inplace=True)
+    
+    # [تصحيح] استخدام الأحرف الصغيرة في مفاتيح القاموس
     data_frame = data_frame.rename({
-        f'High_day{counter_date-1}': 'predicted_high',
-        f'Low_day{counter_date-1}': 'predicted_low',
+        f'high_day{counter_date-1}': 'predicted_high',
+        f'low_day{counter_date-1}': 'predicted_low',
         f'mean_day{counter_date-1}': 'prediction'
     }, axis=1)
 
+    # [تصحيح] استخدام الأحرف الصغيرة في مفاتيح القاموس
     profit_calculator = profit_calculator.rename({
-        f'High_day{counter_date - 1}': 'High',
-        f'Low_day{counter_date - 1}': 'Low',
+        f'high_day{counter_date - 1}': 'High',
+        f'low_day{counter_date - 1}': 'Low',
         f'open_day{counter_date - 1}': 'Open',
         f'close_day{counter_date - 1}': 'Close',
         f'volume_day{counter_date - 1}': 'Volume'

@@ -39,28 +39,43 @@ class MyLSTM:
         self.model.compile(loss='mean_squared_error', optimizer='adam')
 
     def fit(self, data_x):
-        data_x = np.array(data_x)
-        train_x = data_x[:, 1:-1]
-        train_y = data_x[:, -1]
+        # data_x هي DataFrame. لن نحولها إلى numpy array مباشرة.
+        
+        # --- [التصحيح] ---
+        # 1. استخدم .iloc لتقسيم الـ DataFrame أولاً (لتجنب عمود 'Date')
+        train_x_df = data_x.iloc[:, 1:-1]
+        train_y_series = data_x.iloc[:, -1]
+
+        # 2. الآن قم بالتحويل إلى numpy array بأمان
+        train_x = np.array(train_x_df, dtype=float)
+        train_y = np.array(train_y_series, dtype=float)
+        # --- [نهاية التصحيح] ---
+
 
         if self.is_model_created == False:
             self.create_model(train_x.shape[1])
             self.is_model_created = True
 
-        train_x = self.sc_in.fit_transform(train_x)
+        train_x = self.sc_in.fit_transform(train_x) # <--- ستعمل الآن
         train_y = train_y.reshape(-1, 1)
         train_y = self.sc_out.fit_transform(train_y)
-        train_x = np.array(train_x, dtype=float)
-        train_y = np.array(train_y, dtype=float)
+        
+        # هذه الأسطر لم نعد بحاجة لها هنا
+        # train_x = np.array(train_x, dtype=float)
+        # train_y = np.array(train_y, dtype=float)
+        
         train_x = np.reshape(train_x, (train_x.shape[0], 1, train_x.shape[1]))
         self.model.fit(train_x, train_y, epochs=self.epochs, verbose=self.verbose, shuffle=False, batch_size=50)
 
     def predict(self, test_x):
-        test_x = np.array(test_x.iloc[:, 1:], dtype=float)
-        test_x = self.sc_in.transform(test_x)
-        test_x = np.reshape(test_x, (test_x.shape[0], 1, test_x.shape[1]))
-        pred_y = self.model.predict(test_x)
+        # دالة التوقع كانت صحيحة وتستخدم .iloc
+        test_x_features = test_x.iloc[:, 1:]
+        test_x_array = np.array(test_x_features, dtype=float)
+        
+        test_x_scaled = self.sc_in.transform(test_x_array)
+        test_x_reshaped = np.reshape(test_x_scaled, (test_x_scaled.shape[0], 1, test_x_scaled.shape[1]))
+        
+        pred_y = self.model.predict(test_x_reshaped)
         pred_y = pred_y.reshape(-1, 1)
         pred_y = self.sc_out.inverse_transform(pred_y)
         return pred_y
-
