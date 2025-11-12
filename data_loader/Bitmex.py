@@ -88,11 +88,23 @@ class BitmexDataset:
 
         project_root = Path(__file__).resolve().parents[1]
         candidates.append(project_root / default_name)
+
+        data_dir = Path(__file__).resolve().parent / "data"
+        candidates.append(data_dir / default_name)
+
         candidates.append(Path.cwd() / default_name)
 
+        searched_paths = []
         for candidate in candidates:
+            searched_paths.append(str(candidate))
             if candidate.is_file():
                 return candidate
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Cache lookup for %s exhausted candidates: %s",
+                default_name,
+                ", ".join(searched_paths),
+            )
         return None
 
     ### FUNCTIONS

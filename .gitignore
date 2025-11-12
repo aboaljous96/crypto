@@ -14,6 +14,8 @@ env/
 
 # Data, logs, and outputs
 data/
+!data_loader/data/
+!data_loader/data/**
 outputs/
 logs/
 
