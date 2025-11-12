@@ -1,111 +1,82 @@
+"""Training utilities for CryptoPredictions models."""
+
+from __future__ import annotations
+
 import logging
-import os
+from dataclasses import dataclass
+from typing import Optional
 
-import hydra
-from omegaconf import DictConfig
-from models import MODELS
-from data_loader import get_dataset
-from factory.trainer import Trainer
-from factory.evaluator import Evaluator
-from factory.profit_calculator import ProfitCalculator
+import numpy as np
 import pandas as pd
-
-from sklearn.model_selection import TimeSeriesSplit
-from path_definition import HYDRA_PATH
-
-from utils.reporter import Reporter
-from data_loader.creator import create_dataset, preprocess
-
 
 logger = logging.getLogger(__name__)
 
 
-def run_training(cfg: DictConfig):
-    if cfg.load_path is None and cfg.model is None:
-        msg = 'either specify a load_path or config a model.'
-        logger.error(msg)
-        raise Exception(msg)
+def _ensure_dataframe(dataset: pd.DataFrame | np.ndarray | list) -> pd.DataFrame:
+    """Normalise a dataset into a clean ``pandas.DataFrame``.
 
-    elif cfg.load_path is not None:
-        dataset_ = pd.read_csv(cfg.load_path)
-        if 'Date' not in dataset_.keys():
-            dataset_.rename(columns={'timestamp': 'Date'}, inplace=True)
-        if 'High' not in dataset_.keys():
-            dataset_.rename(columns={'high': 'High'}, inplace=True)
-        if 'Low' not in dataset_.keys():
-            dataset_.rename(columns={'low': 'Low'}, inplace=True)
+    The project stores training samples as data frames containing a ``Date``
+    column followed by flattened feature values and the ``prediction`` target
+    as the final column.  Some callers occasionally pass a ``numpy`` array or a
+    list of rows, therefore this helper converts the input into a dataframe and
+    performs a minimal clean-up (type coercion, dropping missing values) so that
+    models receive a consistent structure.
+    """
 
-        dataset, profit_calculator = preprocess(dataset_, cfg, logger)
+    if dataset is None:
+        raise ValueError("A valid dataset must be provided to the Trainer.")
 
-    elif cfg.model is not None:
-        dataset, profit_calculator = get_dataset(cfg.dataset_loader.name, cfg.dataset_loader.train_start_date,
-                              cfg.dataset_loader.valid_end_date, cfg)
+    if isinstance(dataset, pd.DataFrame):
+        frame = dataset.copy()
+    else:
+        frame = pd.DataFrame(dataset)
 
-    cfg.save_dir = os.getcwd()
-    reporter = Reporter(cfg)
-    reporter.setup_saving_dirs(cfg.save_dir)
-    model = MODELS[cfg.model.type](cfg.model)
+    if frame.empty:
+        raise ValueError("Received an empty dataset for training.")
 
-    dataset_for_profit = dataset.copy()
-    dataset_for_profit.drop(['prediction'], axis=1, inplace=True)
-    dataset.drop(['predicted_high', 'predicted_low'], axis=1, inplace=True)
-    
-    # --- [بداية الكود المعدل] ---
-    if cfg.validation_method == 'simple':
-        train_dataset = dataset[
-            (dataset['Date'] > cfg.dataset_loader.train_start_date) & (
-                        dataset['Date'] < cfg.dataset_loader.train_end_date)]
-        valid_dataset = dataset[
-            (dataset['Date'] > cfg.dataset_loader.valid_start_date) & (
-                        dataset['Date'] < cfg.dataset_loader.valid_end_date)]
-        Trainer(cfg, train_dataset, None, model).train()
-        mean_prediction = Evaluator(cfg, test_dataset=valid_dataset, model=model, reporter=reporter).evaluate()
+    # Normalise date column if present.  Keeping it as datetime simplifies
+    # potential downstream feature engineering while models ignore it by
+    # skipping the first column during fitting.
+    if "Date" in frame.columns:
+        frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce")
 
-    elif cfg.validation_method == 'cross_validation':
-        n_split = 3
-        tscv = TimeSeriesSplit(n_splits=n_split)
+    # All other columns should be numeric; coercion ensures that stray
+    # non-numeric strings turn into NaNs that can subsequently be dropped.
+    for column in frame.columns:
+        if column == "Date":
+            continue
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
 
-        for train_index, test_index in tscv.split(dataset):
-            train_dataset, valid_dataset = dataset.iloc[train_index], dataset.iloc[test_index]
-            Trainer(cfg, train_dataset, None, model).train()
-            # هذا المتغير خاص فقط بحلقة الـ CV
-            mean_prediction_cv = Evaluator(cfg, test_dataset=valid_dataset, model=model, reporter=reporter).evaluate()
+    # Drop rows with any missing values to avoid issues in scikit-learn style
+    # estimators that expect purely numeric matrices.
+    frame = frame.replace([np.inf, -np.inf], np.nan).dropna(axis=0, how="any")
 
-        reporter.add_average()
-        
-        # [الإصلاح]
-        # بعد انتهاء الـ CV، يجب أن نولد تنبؤ (mean_prediction)
-        # بناءً على التقسيم البسيط (simple split) الذي سيستخدمه ProfitCalculator
-        # لضمان تطابق الأطوال.
+    if frame.empty:
+        raise ValueError("Dataset became empty after cleaning; cannot train model.")
 
-        logger.info("[ProfitCalculator] Training mean model on simple split...")
-        train_dataset = dataset[
-            (dataset['Date'] > cfg.dataset_loader.train_start_date) & (
-                        dataset['Date'] < cfg.dataset_loader.train_end_date)]
-        valid_dataset = dataset[
-            (dataset['Date'] > cfg.dataset_loader.valid_start_date) & (
-                        dataset['Date'] < cfg.dataset_loader.valid_end_date)]
-        
-        # نستخدم نسخة جديدة من النموذج لضمان التدريب على كامل بيانات "simple train"
-        model_for_profit = MODELS[cfg.model.type](cfg.model)
-        Trainer(cfg, train_dataset, None, model_for_profit).train()
-        
-        logger.info("[ProfitCalculator] Evaluating mean model on simple split...")
-        mean_prediction = Evaluator(cfg, test_dataset=valid_dataset, model=model_for_profit, reporter=reporter).evaluate()
-        # [نهاية الإصلاح]
-
-    ProfitCalculator(cfg, dataset_for_profit, profit_calculator, mean_prediction, reporter).profit_calculator()
-    # --- [نهاية الكود المعدل] ---
-
-    reporter.print_pretty_metrics(logger)
-    reporter.save_metrics()
+    return frame
 
 
-@hydra.main(config_path=HYDRA_PATH, config_name="train")
-def train(cfg: DictConfig):
-    run_training(cfg)
+@dataclass
+class Trainer:
+    """Thin wrapper that prepares datasets before delegating to models."""
 
+    args: object
+    train_dataset: pd.DataFrame
+    validation_dataset: Optional[pd.DataFrame]
+    model: object
 
-if __name__ == '__main__':
-    train()
+    def train(self) -> object:
+        """Fit the underlying model on the provided dataset.
 
+        The trainer is intentionally lightweight – most models in the project
+        implement their own ``fit`` logic.  This method ensures the training
+        frame is clean and numeric before invoking ``model.fit``.  The trained
+        model instance is returned for convenience.
+        """
+
+        frame = _ensure_dataframe(self.train_dataset)
+        logger.info("Training %s on %d samples.", self.model.__class__.__name__, len(frame))
+        self.model.fit(frame)
+        logger.info("Training finished for %s.", self.model.__class__.__name__)
+        return self.model
