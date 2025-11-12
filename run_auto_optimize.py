@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -38,6 +39,9 @@ OUTER_SPLITS = 3
 INNER_SPLITS = 3
 PREDICTION_WINDOW = 7
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+DEFAULT_BITMEX_CACHE = PROJECT_ROOT / "XBTUSD-1d-data.csv"
+
 
 def clone_config(cfg: DictConfig) -> DictConfig:
     return OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
@@ -71,6 +75,8 @@ class AutoModelOptimizer:
                 cfg.dataset_loader.valid_start_date = "2016-01-01 00:00:00"
                 cfg.dataset_loader.valid_end_date = "2099-12-31 00:00:00"
                 cfg.dataset_loader.prediction_window = 1
+                cfg.dataset_loader.use_local_cache = True
+                cfg.dataset_loader.local_cache_path = str(DEFAULT_BITMEX_CACHE)
                 base_cfgs[model_name] = cfg
         return base_cfgs
 

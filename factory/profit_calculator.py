@@ -46,7 +46,7 @@ class ProfitCalculator:
         return final
 
     def setup_saving_dirs(self, parent_dir):
-        os.makedirs(os.path.join(parent_dir, 'backTest_dataset'), exist_ok=False)
+        os.makedirs(os.path.join(parent_dir, 'backTest_dataset'), exist_ok=True)
         address = os.path.join(self.reporter.parent_dir, 'backTest_dataset',
                                f'{self.reporter.symbol}_{self.reporter.model}_backTest.csv')
         return address
