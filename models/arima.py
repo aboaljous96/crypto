@@ -5,6 +5,15 @@ import numpy as np
 import pandas as pd
 
 
+# NOTE:
+#   The original codebase exposed an ``arima`` factory at module level. Some
+#   parts of the project – and, more importantly, a number of community forks –
+#   still import ``arima`` or ``Arima`` from ``models.arima``.  The rewritten
+#   module only provided the :class:`MyARIMA` class which broke those imports and
+#   resulted in ``ImportError`` during the optimisation script bootstrap on
+#   Windows.  We keep :class:`MyARIMA` as the main implementation but export
+#   compatibility aliases so every import style continues to work.
+
 class MyARIMA:
     sc_in = MinMaxScaler(feature_range=(0, 1))
     sc_out = MinMaxScaler(feature_range=(0, 1))
@@ -39,3 +48,15 @@ class MyARIMA:
         pred_y = pred_y.reshape(-1, 1)
         pred_y = self.sc_out.inverse_transform(pred_y)
         return pred_y
+
+
+# ---------------------------------------------------------------------------
+# Backwards compatibility aliases
+# ---------------------------------------------------------------------------
+# Many legacy scripts expect ``arima``/``Arima`` callables.  Re-export the class
+# under those names so ``from models.arima import arima`` keeps working and, at
+# the same time, make the exported symbol list explicit.
+Arima = MyARIMA
+arima = MyARIMA
+
+__all__ = ["MyARIMA", "Arima", "arima"]
