@@ -40,25 +40,75 @@ class ProfitCalculator:
         
         # الكود الجديد:
         # نحن ندمج 3 مصفوفات عمودية (N, 1) أفقيًا لنحصل على مصفوفة (N, 3)
+        pred_low = np.asarray(self.predicted_low).reshape(-1, 1)
+        pred_high = np.asarray(self.predicted_high).reshape(-1, 1)
+        mean_pred = np.asarray(self.mean_prediction).reshape(-1, 1)
+
+        if not (pred_low.shape[0] == pred_high.shape[0] == mean_pred.shape[0]):
+            logger.error("Shape mismatch during hstack:")
+            logger.error(f"predicted_low shape: {pred_low.shape}")
+            logger.error(f"predicted_high shape: {pred_high.shape}")
+            logger.error(f"mean_prediction shape: {mean_pred.shape}")
+            raise ValueError(
+                "predicted_low, predicted_high and mean_prediction must have the same number of rows"
+            )
+
         try:
-            arr = np.hstack((self.predicted_low, self.predicted_high, self.mean_prediction))
+            arr = np.hstack((pred_low, pred_high, mean_pred))
         except ValueError as e:
             logger.error(f"Shape mismatch during hstack:")
-            logger.error(f"predicted_low shape: {self.predicted_low.shape}")
-            logger.error(f"predicted_high shape: {self.predicted_high.shape}")
-            logger.error(f"mean_prediction shape: {self.mean_prediction.shape}")
+            logger.error(f"predicted_low shape: {pred_low.shape}")
+            logger.error(f"predicted_high shape: {pred_high.shape}")
+            logger.error(f"mean_prediction shape: {mean_pred.shape}")
             raise e
         # --- [نهاية الكود المعدل] ---
 
         predicteds = pd.DataFrame(arr, columns=['predicted_low', 'predicted_high', 'predicted_mean'])
         self.original.reset_index(drop=True, inplace=True)
         df = pd.concat([self.original, predicteds], axis=1)
-        s1 = np.array(Strategies(df).signal1())
-        s2 = np.array(Strategies(df).signal2())
+
+        # Normalise OHLCV column names so the backtesting strategies can rely on
+        # the canonical capitalised versions regardless of how they are stored
+        # in the cached dataset.  Some cached BitMEX fixtures use lower-case
+        # labels which previously triggered KeyError('Close') during
+        # backtesting.
+        normalised = df.copy()
+        lookup = {col.lower(): col for col in normalised.columns}
+        required = {
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume',
+        }
+
+        missing_required = []
+        for key, target in required.items():
+            if target in normalised.columns:
+                continue
+            if key in lookup:
+                source = lookup[key]
+                if source != target:
+                    normalised = normalised.rename(columns={source: target})
+            else:
+                missing_required.append(target)
+
+        if missing_required:
+            logger.error(
+                "Missing required OHLCV columns after concatenation: %s", missing_required
+            )
+            raise KeyError(
+                "Required OHLCV columns are missing from the profit calculation frame: "
+                + ", ".join(missing_required)
+            )
+
+        strategies = Strategies(normalised)
+        s1 = np.array(strategies.signal1())
+        s2 = np.array(strategies.signal2())
         signal = np.row_stack((s1, s2)).T
         signal = pd.DataFrame(signal, columns=['signal1', 'signal2'])
         # final = pd.concat([self.original, signal], axis=1)
-        final = pd.concat([df, signal], axis=1)
+        final = pd.concat([normalised, signal], axis=1)
         return final
 
     def setup_saving_dirs(self, parent_dir):

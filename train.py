@@ -49,6 +49,7 @@ def run_training(cfg: DictConfig):
     dataset_for_profit = dataset.copy()
     dataset_for_profit.drop(['prediction'], axis=1, inplace=True)
     dataset.drop(['predicted_high', 'predicted_low'], axis=1, inplace=True)
+    mean_prediction = None
     if cfg.validation_method == 'simple':
         train_dataset = dataset[
             (dataset['Date'] > cfg.dataset_loader.train_start_date) & (
@@ -69,6 +70,32 @@ def run_training(cfg: DictConfig):
             mean_prediction = Evaluator(cfg, test_dataset=valid_dataset, model=model, reporter=reporter).evaluate()
 
         reporter.add_average()
+
+        # After cross-validation, retrain on the full training range and
+        # generate predictions for the validation period used by the profit calculator.
+        train_dataset = dataset[
+            (dataset['Date'] > cfg.dataset_loader.train_start_date)
+            & (dataset['Date'] < cfg.dataset_loader.train_end_date)
+        ]
+        valid_dataset = dataset[
+            (dataset['Date'] > cfg.dataset_loader.valid_start_date)
+            & (dataset['Date'] < cfg.dataset_loader.valid_end_date)
+        ]
+
+        if not valid_dataset.empty:
+            Trainer(cfg, train_dataset, None, model).train()
+            mean_prediction = Evaluator(
+                cfg, test_dataset=valid_dataset, model=model, reporter=reporter
+            ).evaluate()
+        else:
+            logger.warning(
+                "Validation dataset for profit calculation is empty after cross-validation split."
+            )
+
+    if mean_prediction is None:
+        raise ValueError(
+            "Mean prediction values were not generated; check the validation configuration."
+        )
 
     ProfitCalculator(cfg, dataset_for_profit, profit_calculator, mean_prediction, reporter).profit_calculator()
 
