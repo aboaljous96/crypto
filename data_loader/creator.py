@@ -66,11 +66,15 @@ def preprocess(dataset, cfg, logger=None):
     # تنظيف البيانات
     df = df.dropna()
     df1 = df.drop('Mean', axis=1)
-    # Track the canonical feature names after any case-normalisation so that
-    # downstream column handling (e.g. profit calculator preparation) operates
-    # on the exact column keys present in the intermediate dataframes.
-    features = df1.columns.tolist()
-    arr = np.array(df1)
+    
+    # --- [بداية الكود المعدل] ---
+    # 1. حدد الميزات أولاً (بدون التاريخ)
+    #    نحن نستبعد عمود التاريخ من قائمة الميزات قبل تحويله إلى مصفوفة
+    features = [f for f in df1.columns if f.lower() != 'date']
+
+    # 2. أنشئ المصفوفة "arr" بناءً على هذه الميزات (الرقمية فقط)
+    arr = np.array(df1[features])
+    # --- [نهاية الكود المعدل] ---
 
     # حساب المؤشرات الفنية
     indicators = calculate_indicators(
@@ -86,7 +90,7 @@ def preprocess(dataset, cfg, logger=None):
     arr1, dates = add_indicators_to_dataset(indicators, indicators_names, dates, mean_=np.array(df.Mean))
     arr = np.concatenate((arr[100:], arr1), axis=1)
 
-    features = [f for f in features if f.lower() != 'date']
+    # "features" هنا يجب أن تكون القائمة الرقمية التي أنشأناها في الخطوة 1
     features = features + indicators_names
     dataset, profit_calculator = create_dataset(
         arr,

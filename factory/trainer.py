@@ -1,29 +1,111 @@
 import logging
-import time
-import gc
+import os
+
+import hydra
+from omegaconf import DictConfig
+from models import MODELS
+from data_loader import get_dataset
+from factory.trainer import Trainer
+from factory.evaluator import Evaluator
+from factory.profit_calculator import ProfitCalculator
+import pandas as pd
+
+from sklearn.model_selection import TimeSeriesSplit
+from path_definition import HYDRA_PATH
+
+from utils.reporter import Reporter
+from data_loader.creator import create_dataset, preprocess
+
 
 logger = logging.getLogger(__name__)
-from path_definition import *
-from os.path import join
 
 
-class Trainer:
-    def __init__(self, args, train_dataset, valid_dataset, model):
-        self.args = args
-        self.model = model
-        self.train_dataset = train_dataset
-        self.valid_dataset = valid_dataset
-        self.use_validation = False if valid_dataset is None else True
+def run_training(cfg: DictConfig):
+    if cfg.load_path is None and cfg.model is None:
+        msg = 'either specify a load_path or config a model.'
+        logger.error(msg)
+        raise Exception(msg)
 
-    def train(self):
-        logger.info("Training started.")
-        time0 = time.time()
+    elif cfg.load_path is not None:
+        dataset_ = pd.read_csv(cfg.load_path)
+        if 'Date' not in dataset_.keys():
+            dataset_.rename(columns={'timestamp': 'Date'}, inplace=True)
+        if 'High' not in dataset_.keys():
+            dataset_.rename(columns={'high': 'High'}, inplace=True)
+        if 'Low' not in dataset_.keys():
+            dataset_.rename(columns={'low': 'Low'}, inplace=True)
 
-        self.model.fit(self.train_dataset)
+        dataset, profit_calculator = preprocess(dataset_, cfg, logger)
 
-        logger.info("-" * 100)
-        logger.info('Training is completed in %.2f seconds.' % (time.time() - time0))
+    elif cfg.model is not None:
+        dataset, profit_calculator = get_dataset(cfg.dataset_loader.name, cfg.dataset_loader.train_start_date,
+                              cfg.dataset_loader.valid_end_date, cfg)
+
+    cfg.save_dir = os.getcwd()
+    reporter = Reporter(cfg)
+    reporter.setup_saving_dirs(cfg.save_dir)
+    model = MODELS[cfg.model.type](cfg.model)
+
+    dataset_for_profit = dataset.copy()
+    dataset_for_profit.drop(['prediction'], axis=1, inplace=True)
+    dataset.drop(['predicted_high', 'predicted_low'], axis=1, inplace=True)
+    
+    # --- [بداية الكود المعدل] ---
+    if cfg.validation_method == 'simple':
+        train_dataset = dataset[
+            (dataset['Date'] > cfg.dataset_loader.train_start_date) & (
+                        dataset['Date'] < cfg.dataset_loader.train_end_date)]
+        valid_dataset = dataset[
+            (dataset['Date'] > cfg.dataset_loader.valid_start_date) & (
+                        dataset['Date'] < cfg.dataset_loader.valid_end_date)]
+        Trainer(cfg, train_dataset, None, model).train()
+        mean_prediction = Evaluator(cfg, test_dataset=valid_dataset, model=model, reporter=reporter).evaluate()
+
+    elif cfg.validation_method == 'cross_validation':
+        n_split = 3
+        tscv = TimeSeriesSplit(n_splits=n_split)
+
+        for train_index, test_index in tscv.split(dataset):
+            train_dataset, valid_dataset = dataset.iloc[train_index], dataset.iloc[test_index]
+            Trainer(cfg, train_dataset, None, model).train()
+            # هذا المتغير خاص فقط بحلقة الـ CV
+            mean_prediction_cv = Evaluator(cfg, test_dataset=valid_dataset, model=model, reporter=reporter).evaluate()
+
+        reporter.add_average()
+        
+        # [الإصلاح]
+        # بعد انتهاء الـ CV، يجب أن نولد تنبؤ (mean_prediction)
+        # بناءً على التقسيم البسيط (simple split) الذي سيستخدمه ProfitCalculator
+        # لضمان تطابق الأطوال.
+
+        logger.info("[ProfitCalculator] Training mean model on simple split...")
+        train_dataset = dataset[
+            (dataset['Date'] > cfg.dataset_loader.train_start_date) & (
+                        dataset['Date'] < cfg.dataset_loader.train_end_date)]
+        valid_dataset = dataset[
+            (dataset['Date'] > cfg.dataset_loader.valid_start_date) & (
+                        dataset['Date'] < cfg.dataset_loader.valid_end_date)]
+        
+        # نستخدم نسخة جديدة من النموذج لضمان التدريب على كامل بيانات "simple train"
+        model_for_profit = MODELS[cfg.model.type](cfg.model)
+        Trainer(cfg, train_dataset, None, model_for_profit).train()
+        
+        logger.info("[ProfitCalculator] Evaluating mean model on simple split...")
+        mean_prediction = Evaluator(cfg, test_dataset=valid_dataset, model=model_for_profit, reporter=reporter).evaluate()
+        # [نهاية الإصلاح]
+
+    ProfitCalculator(cfg, dataset_for_profit, profit_calculator, mean_prediction, reporter).profit_calculator()
+    # --- [نهاية الكود المعدل] ---
+
+    reporter.print_pretty_metrics(logger)
+    reporter.save_metrics()
 
 
+@hydra.main(config_path=HYDRA_PATH, config_name="train")
+def train(cfg: DictConfig):
+    run_training(cfg)
 
+
+if __name__ == '__main__':
+    train()
 

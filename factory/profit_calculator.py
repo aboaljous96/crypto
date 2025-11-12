@@ -33,7 +33,23 @@ class ProfitCalculator:
         final.to_csv(address, encoding='utf-8', index=False)
 
     def create_dataframe(self):
-        arr = np.row_stack((self.predicted_low, self.predicted_high, self.mean_prediction)).T
+        
+        # --- [بداية الكود المعدل] ---
+        # الكود القديم المسبب للخطأ:
+        # arr = np.row_stack((self.predicted_low, self.predicted_high, self.mean_prediction)).T
+        
+        # الكود الجديد:
+        # نحن ندمج 3 مصفوفات عمودية (N, 1) أفقيًا لنحصل على مصفوفة (N, 3)
+        try:
+            arr = np.hstack((self.predicted_low, self.predicted_high, self.mean_prediction))
+        except ValueError as e:
+            logger.error(f"Shape mismatch during hstack:")
+            logger.error(f"predicted_low shape: {self.predicted_low.shape}")
+            logger.error(f"predicted_high shape: {self.predicted_high.shape}")
+            logger.error(f"mean_prediction shape: {self.mean_prediction.shape}")
+            raise e
+        # --- [نهاية الكود المعدل] ---
+
         predicteds = pd.DataFrame(arr, columns=['predicted_low', 'predicted_high', 'predicted_mean'])
         self.original.reset_index(drop=True, inplace=True)
         df = pd.concat([self.original, predicteds], axis=1)
@@ -79,3 +95,4 @@ class ProfitCalculator:
         Trainer(self.args, train_dataset, None, self.model).train()
         test_data_x = valid_dataset.drop(['prediction'], axis=1)
         self.predicted_high = self.model.predict(test_data_x)
+
