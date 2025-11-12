@@ -6,6 +6,10 @@ valid_end_date: 2023-01-16 10:30:00
 features: Date, open, High, Low, close, volume #make sure to have Date High Low
 indicators_names: rsi macd
 prediction_window: 1
+use_local_cache: true
+local_cache_path:
+api_key:
+api_secret:
 
 
 #short_wma, wma, long_wma, ewma, tema, macd, stoch1, stoch2, wpr, rsi_experts, rsi, srsi, bolinger_up,
