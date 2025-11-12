@@ -66,12 +66,49 @@ class ProfitCalculator:
         predicteds = pd.DataFrame(arr, columns=['predicted_low', 'predicted_high', 'predicted_mean'])
         self.original.reset_index(drop=True, inplace=True)
         df = pd.concat([self.original, predicteds], axis=1)
-        s1 = np.array(Strategies(df).signal1())
-        s2 = np.array(Strategies(df).signal2())
+
+        # Normalise OHLCV column names so the backtesting strategies can rely on
+        # the canonical capitalised versions regardless of how they are stored
+        # in the cached dataset.  Some cached BitMEX fixtures use lower-case
+        # labels which previously triggered KeyError('Close') during
+        # backtesting.
+        normalised = df.copy()
+        lookup = {col.lower(): col for col in normalised.columns}
+        required = {
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume',
+        }
+
+        missing_required = []
+        for key, target in required.items():
+            if target in normalised.columns:
+                continue
+            if key in lookup:
+                source = lookup[key]
+                if source != target:
+                    normalised = normalised.rename(columns={source: target})
+            else:
+                missing_required.append(target)
+
+        if missing_required:
+            logger.error(
+                "Missing required OHLCV columns after concatenation: %s", missing_required
+            )
+            raise KeyError(
+                "Required OHLCV columns are missing from the profit calculation frame: "
+                + ", ".join(missing_required)
+            )
+
+        strategies = Strategies(normalised)
+        s1 = np.array(strategies.signal1())
+        s2 = np.array(strategies.signal2())
         signal = np.row_stack((s1, s2)).T
         signal = pd.DataFrame(signal, columns=['signal1', 'signal2'])
         # final = pd.concat([self.original, signal], axis=1)
-        final = pd.concat([df, signal], axis=1)
+        final = pd.concat([normalised, signal], axis=1)
         return final
 
     def setup_saving_dirs(self, parent_dir):
