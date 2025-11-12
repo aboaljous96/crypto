@@ -137,6 +137,30 @@ def create_dataset(dataset, dates, look_back, features, prediction_window=1):
                 return column
         return None
 
+    # Preserve the raw OHLCV columns for the profit calculator before any of
+    # the leak-prevention columns are dropped from the training frame.  The
+    # strategy backtester expects capitalised OHLCV labels, therefore we build
+    # a case-insensitive mapping from the final look-back step to those names
+    # here.
+    def _resolve_last_day_column(base: str):
+        column_name = _match_column(data_frame.columns, f'{base}_day{counter_date-1}')
+        if column_name is None:
+            column_name = _match_column(data_frame.columns, f'{base.lower()}_day{counter_date-1}')
+        return column_name
+
+    ohlcv_map = {}
+    profit_columns = ['Date']
+    for base in ('Open', 'High', 'Low', 'Close', 'Volume'):
+        column_name = _resolve_last_day_column(base)
+        if column_name is not None:
+            ohlcv_map[column_name] = base
+            profit_columns.append(column_name)
+
+    profit_frame = data_frame[profit_columns].copy()
+
+    if ohlcv_map:
+        profit_frame = profit_frame.rename(columns=ohlcv_map)
+
     last_col = []
     for name in features:
         last_col.append(f'{name}_day{counter_date-1}')
@@ -158,8 +182,6 @@ def create_dataset(dataset, dates, look_back, features, prediction_window=1):
     if drop_targets:
         data_frame.drop(drop_targets, axis=1, inplace=True)
 
-    profit_frame = data_frame.copy()
-
     rename_prediction = {}
     for source, target in (
         (f'High_day{counter_date-1}', 'predicted_high'),
@@ -173,23 +195,4 @@ def create_dataset(dataset, dates, look_back, features, prediction_window=1):
     if rename_prediction:
         data_frame = data_frame.rename(rename_prediction, axis=1)
 
-    profit_columns = ['Date']
-    for base in ('Low', 'High', 'Close', 'Open', 'Volume'):
-        column_name = _match_column(profit_frame.columns, f'{base}_day{counter_date-1}')
-        if column_name is None:
-            column_name = _match_column(profit_frame.columns, f'{base.lower()}_day{counter_date-1}')
-        if column_name is not None:
-            profit_columns.append(column_name)
-
-    profit_calculator = profit_frame[profit_columns]
-
-    rename_profit = {}
-    for base in ('High', 'Low', 'Open', 'Close', 'Volume'):
-        column_name = _match_column(profit_calculator.columns, f'{base}_day{counter_date - 1}')
-        if column_name is not None:
-            rename_profit[column_name] = base
-
-    if rename_profit:
-        profit_calculator = profit_calculator.rename(rename_profit, axis=1)
-
-    return data_frame, profit_calculator
+    return data_frame, profit_frame
