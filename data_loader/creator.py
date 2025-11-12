@@ -66,6 +66,10 @@ def preprocess(dataset, cfg, logger=None):
     # تنظيف البيانات
     df = df.dropna()
     df1 = df.drop('Mean', axis=1)
+    # Track the canonical feature names after any case-normalisation so that
+    # downstream column handling (e.g. profit calculator preparation) operates
+    # on the exact column keys present in the intermediate dataframes.
+    features = df1.columns.tolist()
     arr = np.array(df1)
 
     # حساب المؤشرات الفنية
@@ -122,35 +126,66 @@ def create_dataset(dataset, dates, look_back, features, prediction_window=1):
     cols.append('prediction')
 
     data_frame = pd.DataFrame(data_x, columns=cols)
+    def _match_column(columns, target):
+        target_lower = target.lower()
+        for column in columns:
+            if column.lower() == target_lower:
+                return column
+        return None
+
     last_col = []
-    for i in range(len(features)):
-        name = features[i]
+    for name in features:
         last_col.append(f'{name}_day{counter_date-1}')
     last_col.append('prediction')
-    last_col.remove(f'High_day{counter_date-1}')
-    last_col.remove(f'Low_day{counter_date - 1}')
-    last_col.remove(f'mean_day{counter_date - 1}')
 
-    profit_calculator = data_frame.copy()[[
-        'Date',
-        f'Low_day{counter_date-1}', f'High_day{counter_date-1}',
-        f'close_day{counter_date-1}', f'open_day{counter_date-1}',
-        f'volume_day{counter_date-1}'
-    ]]
+    # Remove the columns that should remain in the prediction frame using the
+    # actual column keys to avoid case-mismatch issues when cached datasets use
+    # lower-case labels.
+    for base in ('High', 'Low', 'Mean'):
+        column_name = _match_column(last_col, f'{base}_day{counter_date-1}')
+        if column_name is not None:
+            last_col.remove(column_name)
 
-    data_frame.drop(last_col, axis=1, inplace=True)
-    data_frame = data_frame.rename({
-        f'High_day{counter_date-1}': 'predicted_high',
-        f'Low_day{counter_date-1}': 'predicted_low',
-        f'mean_day{counter_date-1}': 'prediction'
-    }, axis=1)
+    drop_targets = []
+    for col in last_col:
+        match = _match_column(data_frame.columns, col)
+        if match is not None:
+            drop_targets.append(match)
+    if drop_targets:
+        data_frame.drop(drop_targets, axis=1, inplace=True)
 
-    profit_calculator = profit_calculator.rename({
-        f'High_day{counter_date - 1}': 'High',
-        f'Low_day{counter_date - 1}': 'Low',
-        f'open_day{counter_date - 1}': 'Open',
-        f'close_day{counter_date - 1}': 'Close',
-        f'volume_day{counter_date - 1}': 'Volume'
-    }, axis=1)
+    profit_frame = data_frame.copy()
+
+    rename_prediction = {}
+    for source, target in (
+        (f'High_day{counter_date-1}', 'predicted_high'),
+        (f'Low_day{counter_date-1}', 'predicted_low'),
+        (f'Mean_day{counter_date-1}', 'prediction'),
+    ):
+        column_name = _match_column(data_frame.columns, source)
+        if column_name is not None:
+            rename_prediction[column_name] = target
+
+    if rename_prediction:
+        data_frame = data_frame.rename(rename_prediction, axis=1)
+
+    profit_columns = ['Date']
+    for base in ('Low', 'High', 'Close', 'Open', 'Volume'):
+        column_name = _match_column(profit_frame.columns, f'{base}_day{counter_date-1}')
+        if column_name is None:
+            column_name = _match_column(profit_frame.columns, f'{base.lower()}_day{counter_date-1}')
+        if column_name is not None:
+            profit_columns.append(column_name)
+
+    profit_calculator = profit_frame[profit_columns]
+
+    rename_profit = {}
+    for base in ('High', 'Low', 'Open', 'Close', 'Volume'):
+        column_name = _match_column(profit_calculator.columns, f'{base}_day{counter_date - 1}')
+        if column_name is not None:
+            rename_profit[column_name] = base
+
+    if rename_profit:
+        profit_calculator = profit_calculator.rename(rename_profit, axis=1)
 
     return data_frame, profit_calculator
