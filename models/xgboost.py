@@ -52,10 +52,8 @@ class MyXGboost:
         for col in data_x.columns:
             if col != self.response_col and col != self.date_col:
                 self.regressors.append(col)
-        train_x = pd.DataFrame()
-        train_y = pd.DataFrame()
-        train_x[self.regressors] = data_x[self.regressors].astype(float)
-        train_y[self.response_col] = data_x[self.response_col].astype(float)
+        train_x = data_x[self.regressors].astype(float).copy()
+        train_y = data_x[self.response_col].astype(float).copy()
         if self.use_random_search:
             self.model_xg.fit(train_x, train_y)
             self.fitted_model = self.model_xg
@@ -64,8 +62,7 @@ class MyXGboost:
             self.fitted_model = self.reg
 
     def predict(self, test_x):
-        valid_x = pd.DataFrame()
-        valid_x[self.regressors] = test_x[self.regressors].astype(float)
+        valid_x = test_x[self.regressors].astype(float).copy()
         model = self.fitted_model if self.fitted_model is not None else self.model_xg
         pred_y = model.predict(valid_x)
 

@@ -40,13 +40,26 @@ class ProfitCalculator:
         
         # الكود الجديد:
         # نحن ندمج 3 مصفوفات عمودية (N, 1) أفقيًا لنحصل على مصفوفة (N, 3)
+        pred_low = np.asarray(self.predicted_low).reshape(-1, 1)
+        pred_high = np.asarray(self.predicted_high).reshape(-1, 1)
+        mean_pred = np.asarray(self.mean_prediction).reshape(-1, 1)
+
+        if not (pred_low.shape[0] == pred_high.shape[0] == mean_pred.shape[0]):
+            logger.error("Shape mismatch during hstack:")
+            logger.error(f"predicted_low shape: {pred_low.shape}")
+            logger.error(f"predicted_high shape: {pred_high.shape}")
+            logger.error(f"mean_prediction shape: {mean_pred.shape}")
+            raise ValueError(
+                "predicted_low, predicted_high and mean_prediction must have the same number of rows"
+            )
+
         try:
-            arr = np.hstack((self.predicted_low, self.predicted_high, self.mean_prediction))
+            arr = np.hstack((pred_low, pred_high, mean_pred))
         except ValueError as e:
             logger.error(f"Shape mismatch during hstack:")
-            logger.error(f"predicted_low shape: {self.predicted_low.shape}")
-            logger.error(f"predicted_high shape: {self.predicted_high.shape}")
-            logger.error(f"mean_prediction shape: {self.mean_prediction.shape}")
+            logger.error(f"predicted_low shape: {pred_low.shape}")
+            logger.error(f"predicted_high shape: {pred_high.shape}")
+            logger.error(f"mean_prediction shape: {mean_pred.shape}")
             raise e
         # --- [نهاية الكود المعدل] ---
 
