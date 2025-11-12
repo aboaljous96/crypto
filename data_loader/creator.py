@@ -19,6 +19,27 @@ def preprocess(dataset, cfg, logger=None):
         if 'date' in features:
             features.remove('date')
 
+    # Align requested features with the actual dataset columns in a
+    # case-insensitive fashion.  The cached BitMEX fixture stores OHLCV
+    # fields in lower-case whereas some configuration files still reference
+    # the historic capitalised names.  Resolving the mapping here keeps the
+    # configuration backward compatible while maintaining flexibility for
+    # future datasets.
+    columns_lookup = {col.lower(): col for col in dataset.columns}
+    resolved_features = []
+    missing_features = []
+    for feature in features:
+        key = feature.lower()
+        if key in columns_lookup:
+            resolved_features.append(columns_lookup[key])
+        else:
+            missing_features.append(feature)
+
+    if missing_features:
+        raise KeyError(f"Requested features {missing_features} not found in dataset columns {list(dataset.columns)}")
+
+    features = resolved_features
+
     # استخراج العمود الخاص بالتاريخ
     dates = dataset['Date']
     df = dataset[features]
@@ -61,7 +82,7 @@ def preprocess(dataset, cfg, logger=None):
     arr1, dates = add_indicators_to_dataset(indicators, indicators_names, dates, mean_=np.array(df.Mean))
     arr = np.concatenate((arr[100:], arr1), axis=1)
 
-    features = [f for f in features if f != 'date']
+    features = [f for f in features if f.lower() != 'date']
     features = features + indicators_names
     dataset, profit_calculator = create_dataset(
         arr,
